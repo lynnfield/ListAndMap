@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">ListAndMap</string>
+    <string name="no_data">Нет данных</string>
 </resources>
