@@ -6,14 +6,25 @@ import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v7.widget.RecyclerView;
+import android.support.v7.widget.helper.ItemTouchHelper;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 
+import com.lynnfield.listandmap.AddressRepositoryAdapter;
+import com.lynnfield.listandmap.AddressesRepository;
 import com.lynnfield.listandmap.databinding.FragmentListBinding;
+import com.lynnfield.listandmap.events.AddressRemovedEvent;
+import com.lynnfield.listandmap.events.NewAddressEvent;
+import com.lynnfield.listandmap.events.SelectAddressEvent;
+
+import org.greenrobot.eventbus.EventBus;
+import org.greenrobot.eventbus.Subscribe;
+import org.greenrobot.eventbus.ThreadMode;
 
 public class ListFragment extends Fragment {
 
+    private final AddressesRepository repository = AddressesRepository.getInstance();
     private final RecyclerView.AdapterDataObserver syncNoDataMessage = new RecyclerView.AdapterDataObserver() {
         @Override
         public void onItemRangeInserted(final int positionStart, final int itemCount) {
@@ -56,43 +67,69 @@ public class ListFragment extends Fragment {
             }
         }
     };
-    @Nullable
-    private RecyclerView.Adapter<? extends RecyclerView.ViewHolder> adapter;
+    private AddressRepositoryAdapter adapter;
 
     @Nullable
     @Override
     public View onCreateView(final LayoutInflater i, final ViewGroup parent, final Bundle bundle) {
-        final FragmentListBinding b = FragmentListBinding.inflate(i, parent, false);
+        adapter = new AddressRepositoryAdapter(repository);
+        final ItemTouchHelper.SimpleCallback sc =
+                new ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.START | ItemTouchHelper.END) {
+                    @Override
+                    public boolean onMove(
+                            final RecyclerView rv,
+                            final RecyclerView.ViewHolder vh,
+                            final RecyclerView.ViewHolder target) {
+                        return false;
+                    }
 
-        if (adapter != null) {
-            setListAdapter(b, adapter);
-            adapter = null;
-        }
+                    @Override
+                    public void onSwiped(
+                            final RecyclerView.ViewHolder vh,
+                            final int direction) {
+                        final int pos = vh.getAdapterPosition();
+                        repository.remove(pos);
+                    }
+                };
+        final FragmentListBinding b = FragmentListBinding.inflate(i, parent, false);
+        final ItemTouchHelper h = new ItemTouchHelper(sc);
+
+        b.list.setAdapter(adapter);
+        adapter.registerAdapterDataObserver(syncNoDataMessage);
+        h.attachToRecyclerView(b.list);
+
+        syncNoDataMessage(b);
 
         return b.getRoot();
     }
 
-    public void setAdapter(@NonNull final RecyclerView.Adapter<? extends RecyclerView.ViewHolder> a) {
-        if (getView() == null) {
-            adapter = a;
-        } else {
-            final FragmentListBinding b = DataBindingUtil.getBinding(getView());
-            if (b != null)
-                setListAdapter(b, a);
-        }
+    @Override
+    public void onStart() {
+        super.onStart();
+        EventBus.getDefault().register(this);
     }
 
-    private void setListAdapter(
-            @NonNull FragmentListBinding b,
-            @NonNull RecyclerView.Adapter<? extends RecyclerView.ViewHolder> a) {
-        final RecyclerView.Adapter rva = b.list.getAdapter();
-        if (rva != null)
-            rva.unregisterAdapterDataObserver(syncNoDataMessage);
+    @Override
+    public void onStop() {
+        super.onStop();
+        EventBus.getDefault().unregister(this);
+    }
 
-        b.list.setAdapter(a);
-        a.registerAdapterDataObserver(syncNoDataMessage);
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    public void onNewAddress(NewAddressEvent e) {
+        final int i = repository.getData().indexOf(e.address);
+        adapter.notifyItemInserted(i);
+    }
 
-        syncNoDataMessage(b);
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    public void onAddressSelected(SelectAddressEvent e) {
+        final int i = repository.getData().indexOf(e.address);
+        adapter.setSelected(i);
+    }
+
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    public void onAddressRemoved(AddressRemovedEvent e) {
+        adapter.notifyItemRemoved(e.index);
     }
 
     private void syncNoDataMessage(

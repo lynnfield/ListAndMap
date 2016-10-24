@@ -13,11 +13,12 @@ import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.lynnfield.listandmap.AddressesRepository;
 import com.lynnfield.listandmap.R;
+import com.lynnfield.listandmap.events.AddressRemovedEvent;
 import com.lynnfield.listandmap.events.FailedToFetchAddressEvent;
 import com.lynnfield.listandmap.events.FetchAddressEvent;
 import com.lynnfield.listandmap.events.NewAddressEvent;
-import com.lynnfield.listandmap.events.RemoveAddressEvent;
 import com.lynnfield.listandmap.events.SelectAddressEvent;
 import com.lynnfield.listandmap.models.Address;
 
@@ -32,6 +33,7 @@ import java.util.Map;
 
 
 public class MapFragment extends com.google.android.gms.maps.MapFragment implements OnMapReadyCallback {
+    private static final EventBus bus = new EventBus();
     private final Map<Address, Marker> addressMarker = new HashMap<>();
     @Nullable
     private GoogleMap map;
@@ -41,7 +43,7 @@ public class MapFragment extends com.google.android.gms.maps.MapFragment impleme
         @Override
         public void onMapClick(final LatLng l) {
             final Address a = new Address(null, l.latitude, l.longitude);
-            EventBus.getDefault().post(new FetchAddressEvent(a));
+            bus.post(new FetchAddressEvent(a));
         }
     };
     private GoogleMap.OnMarkerClickListener notifyListener = new GoogleMap.OnMarkerClickListener() {
@@ -68,12 +70,14 @@ public class MapFragment extends com.google.android.gms.maps.MapFragment impleme
     public void onStart() {
         super.onStart();
         EventBus.getDefault().register(this);
+        bus.register(this);
     }
 
     @Override
     public void onStop() {
         super.onStop();
         EventBus.getDefault().unregister(this);
+        bus.unregister(this);
     }
 
     @Override
@@ -81,6 +85,8 @@ public class MapFragment extends com.google.android.gms.maps.MapFragment impleme
         map = m;
         map.setOnMapClickListener(fetchAddress);
         map.setOnMarkerClickListener(notifyListener);
+
+        refillMarkers();
 
         if (focusTarget == null)
             return;
@@ -106,7 +112,7 @@ public class MapFragment extends com.google.android.gms.maps.MapFragment impleme
             final List<android.location.Address> l =
                     geocoder.getFromLocation(a.getLatitude(), a.getLongitude(), 1);
             if (l == null || l.isEmpty()) {
-                EventBus.getDefault().post(new FailedToFetchAddressEvent(a));
+                bus.post(new FailedToFetchAddressEvent(a));
             } else {
                 final android.location.Address addr = l.get(0);
                 StringBuilder sb = new StringBuilder();
@@ -117,7 +123,7 @@ public class MapFragment extends com.google.android.gms.maps.MapFragment impleme
                 sb.deleteCharAt(sb.length() - 1);
 
                 a.setText(sb.toString());
-                EventBus.getDefault().post(new NewAddressEvent(a));
+                AddressesRepository.getInstance().add(a);
             }
         } catch (IOException e) {
             Log.e(MapFragment.class.getName(), "failed to load address", e);
@@ -132,15 +138,7 @@ public class MapFragment extends com.google.android.gms.maps.MapFragment impleme
 
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onNewAddress(NewAddressEvent e) {
-        if (map == null)
-            return;
-
-        final Address a = e.address;
-        final MarkerOptions mo = new MarkerOptions();
-        mo.position(new LatLng(a.getLatitude(), a.getLongitude()));
-        final Marker m = map.addMarker(mo);
-        m.setTag(a);
-        addressMarker.put(a, m);
+        addMarker(e.address);
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
@@ -149,12 +147,30 @@ public class MapFragment extends com.google.android.gms.maps.MapFragment impleme
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
-    public void onAddressRemoved(RemoveAddressEvent e) {
+    public void onAddressRemoved(AddressRemovedEvent e) {
         final Marker m = addressMarker.remove(e.address);
 
         if (m == null)
             return;
 
         m.remove();
+    }
+
+    private void refillMarkers() {
+        addressMarker.clear();
+
+        for (Address a : AddressesRepository.getInstance().getData())
+            addMarker(a);
+    }
+
+    private void addMarker(final Address a) {
+        if (map == null)
+            return;
+
+        final MarkerOptions mo = new MarkerOptions();
+        mo.position(new LatLng(a.getLatitude(), a.getLongitude()));
+        final Marker m = map.addMarker(mo);
+        m.setTag(a);
+        addressMarker.put(a, m);
     }
 }

@@ -21,8 +21,7 @@
             android:value="AIzaSyDmRZmfqR7PgWue27zvbk8S-fphEhJ5Oe0"/>
 
         <activity
-            android:name=".ui.MainActivity"
-            android:screenOrientation="sensorPortrait">
+            android:name=".ui.MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
 
