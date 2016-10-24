@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">ListAndMap</string>
     <string name="no_data">Нет данных</string>
+    <string name="failed_to_find_address">Не удалось найти адрес</string>
 </resources>

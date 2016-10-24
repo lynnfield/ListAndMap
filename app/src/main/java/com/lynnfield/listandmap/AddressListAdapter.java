@@ -2,7 +2,6 @@ package com.lynnfield.listandmap;
 
 import android.databinding.DataBindingUtil;
 import android.support.annotation.NonNull;
-import android.support.annotation.Nullable;
 import android.support.v7.widget.RecyclerView;
 import android.support.v7.widget.helper.ItemTouchHelper;
 import android.view.LayoutInflater;
@@ -10,15 +9,18 @@ import android.view.View;
 import android.view.ViewGroup;
 
 import com.lynnfield.listandmap.databinding.AddressListItemBinding;
+import com.lynnfield.listandmap.events.RemoveAddressEvent;
+import com.lynnfield.listandmap.events.SelectAddressEvent;
+import com.lynnfield.listandmap.models.Address;
+
+import org.greenrobot.eventbus.EventBus;
 
 import java.util.Collections;
 import java.util.List;
 
-class AddressListAdapter extends RecyclerView.Adapter<AddressListAdapter.VH> {
+public class AddressListAdapter extends RecyclerView.Adapter<AddressListAdapter.VH> {
     private static final int NO_SELECTED = -1;
     private final ItemTouchHelper helper;
-    @Nullable
-    private OnItemSelectedListener listener;
     @NonNull
     private List<Address> data = Collections.emptyList();
     private int selectedIndex = NO_SELECTED;
@@ -40,13 +42,18 @@ class AddressListAdapter extends RecyclerView.Adapter<AddressListAdapter.VH> {
                             final RecyclerView.ViewHolder vh,
                             final int direction) {
                         final int pos = vh.getAdapterPosition();
-                        data.remove(pos);
-                        if (selectedIndex == pos)
-                            selectedIndex = NO_SELECTED;
-                        notifyItemRemoved(pos);
+                        final Address a = data.get(pos);
+                        EventBus.getDefault().post(new RemoveAddressEvent(a));
                     }
                 };
         helper = new ItemTouchHelper(sc);
+        registerAdapterDataObserver(new RecyclerView.AdapterDataObserver() {
+            @Override
+            public void onItemRangeRemoved(final int positionStart, final int itemCount) {
+                if (positionStart <= selectedIndex && selectedIndex < positionStart + itemCount)
+                    selectedIndex = NO_SELECTED;
+            }
+        });
     }
 
     @Override
@@ -64,8 +71,7 @@ class AddressListAdapter extends RecyclerView.Adapter<AddressListAdapter.VH> {
             @Override
             public void onClick(final View v) {
                 setNewSelected(vh.getAdapterPosition());
-                if (listener != null)
-                    listener.onItemSelected(data.get(selectedIndex));
+                EventBus.getDefault().post(new SelectAddressEvent(data.get(selectedIndex)));
             }
         });
         return vh;
@@ -92,19 +98,11 @@ class AddressListAdapter extends RecyclerView.Adapter<AddressListAdapter.VH> {
         setNewSelected(selectedIndex);
     }
 
-    public void setListener(@Nullable final OnItemSelectedListener listener) {
-        this.listener = listener;
-    }
-
     private void setNewSelected(final int newSelected) {
         final int oldSelected = selectedIndex;
         selectedIndex = newSelected;
         AddressListAdapter.this.notifyItemChanged(oldSelected);
         AddressListAdapter.this.notifyItemChanged(selectedIndex);
-    }
-
-    public interface OnItemSelectedListener {
-        void onItemSelected(final Address address);
     }
 
     static class VH extends RecyclerView.ViewHolder {
